@@ -77,7 +77,7 @@ not-plesk-domains.csv  ,  List of domains that DO NOT point to the configured IP
 
 For a complete, step-by-step guide, check out my full article:
 
-👉 [**Check Domains On Plesk**](https://perciocastelo.com.br/blog/check-domains-on-plesk.html)
+👉 [**Check Domains Ponting to Plesk**](https://perciocastelo.com.br/blog/check-domains-pointing-to-plesk.html)
 
 ## License 📄
 
