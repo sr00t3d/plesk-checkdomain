@@ -1,4 +1,4 @@
-# Domain Pointing Checker (Plesk)
+# Domain Name Verifier (Plesk)
 
 Readme: [Português](README-ptbr.md)
 
