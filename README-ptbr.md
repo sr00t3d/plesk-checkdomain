@@ -67,3 +67,18 @@ Arquivo                ,  Descrição
 plesk-domains.csv      ,  Lista de domínios que apontam corretamente para os IPs configurados.
 not-plesk-domains.csv  ,  Lista de domínios que NÃO apontam para os IPs configurados ou não possuem resolução DNS.
 ```
+
+## ⚠️ Aviso Legal
+
+> [!WARNING]
+> Este software é fornecido "no estado em que se encontra". Certifique-se sempre de testar primeiro em um ambiente de desenvolvimento. O autor não se responsabiliza por qualquer uso indevido, consequências legais ou impacto em dados causados por esta ferramenta.
+
+## 📚 Tutorial Detalhado
+
+Para um guia completo, passo a passo, confira meu artigo completo:
+
+👉 [**Verificar Domínios Apontando para o Plesk**](https://perciocastelo.com.br/blog/check-domains-pointing-to-plesk.html)
+
+## Licença 📄
+
+Este projeto está licenciado sob a **GNU General Public License v3.0**. Veja o arquivo [LICENSE](LICENSE) para mais detalhes.
