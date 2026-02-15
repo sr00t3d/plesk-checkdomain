@@ -67,3 +67,18 @@ File                   ,  Description
 plesk-domains.csv      ,  List of domains that correctly point to the configured IPs.
 not-plesk-domains.csv  ,  List of domains that DO NOT point to the configured IPs or do not have DNS resolution.
 ```
+
+## ⚠️ Legal Notice
+
+> [!WARNING]
+> This software is provided "as is". Always make sure to test first in a development environment. The author is not responsible for any misuse, legal consequences, or data impact caused by this tool.
+
+## 📚 Detailed Tutorial
+
+For a complete, step-by-step guide, check out my full article:
+
+👉 [**Check Domains On Plesk**](https://perciocastelo.com.br/blog/check-domains-on-plesk.html)
+
+## License 📄
+
+This project is licensed under the **GNU General Public License v3.0**. See the [LICENSE](LICENSE) file for more details.
