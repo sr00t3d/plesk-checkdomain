@@ -3,11 +3,14 @@
 Readme: [Português](README-ptbr.md)
 
 ![License](https://img.shields.io/github/license/sr00t3d/plesk-checkdomain)
-![PHP Script](https://img.shields.io/badge/javascript-script-green)
+![Bash Script](https://img.shields.io/badge/bash-script-green)
 
 This Bash script was developed to audit and bulk-verify whether a list of domains (extracted from Plesk or manually provided) is correctly pointing to the IP addresses of a target server.
 
-The script resolves the DNS of each domain externally (using Google DNS 8.8.8.8 to avoid local cache), compares it with a list of authorized IPs, and generates CSV reports.
+The script resolves the DNS of each domain externally (using Google DNS
+8.8.8.8 to avoid local cache), compares it with a list of authorized IPs,
+generates CSV reports, appends an incremental TXT execution report, and sends
+an email summary.
 
 ## 🚀 Features
 
@@ -17,23 +20,29 @@ The script resolves the DNS of each domain externally (using Google DNS 8.8.8.8 
 - CSV Reports: Generates two separate files (semicolon-separated ;) to simplify importing into Excel:
 - Domains with correct pointing.
 - Domains with incorrect pointing or without IP.
+- Incremental TXT report: Appends each run to a persistent report file.
+- Email summary: Sends only the current execution section by email.
 
 ## 📋 Prerequisites
 
 - Linux Operating System (compatible with Plesk servers).
 - Root access or permission to execute Plesk (plesk db) and dig commands.
 - bind-utils or dnsutils package installed (for the dig command).
+- `mail` command configured on the server (mailx / mailutils).
 
 ## ⚙️ Configuration
 
-Before running, check the IP variable at the beginning of the script to ensure it matches the current infrastructure:
+Before running, update the variables at the beginning of the script:
 
 ```bash
-# Andamento IP list (adjust correct IPs here)
-ANDAMENTO_IPS=("IP")
+DIRECTORY_REPORTS="/opt/suporte/relatorios"
+FILE_REPORT="$DIRECTORY_REPORTS/plesk-relatorio-dominios.txt"
+DESTINY_MAIL="mail@domain.tld"
+PLESK_IPS=("SERVER_IP_1")
 ```
 
-_You can add multiple IPs by separating them with spaces inside the parentheses._
+You can add multiple IPs by separating them with spaces inside
+`PLESK_IPS=(...)`.
 
 ## ▶️ How to Use
 
@@ -50,22 +59,26 @@ chmod +x plesk-checkdomains.sh
 **3. Execution:**
 
 ```bash
-./check_domains.sh
+./plesk-checkdomains.sh
 ```
 
 ## Domain List Behavior
 
-- **First Execution**: The script will look for the file dominio-andamento.txt. If not found, it will execute the Plesk command to generate the base list.
-- **Subsequent Executions**: If the dominio-andamento.txt file already exists, the script will use this static list. To force a new read from Plesk, remove this file (rm dominio-andamento.txt) before running the script.
+- **First execution**: The script looks for `plesk-domains.txt`. If not found,
+  it runs the Plesk command to generate the base list.
+- **Subsequent executions**: If `plesk-domains.txt` already exists, the script
+  uses this static list. To force a fresh read from Plesk, remove
+  `plesk-domains.txt` before running again.
 
 ## 📂 Output (Outputs)
 
-At the end of execution, the script will display a summary in the terminal and generate the following files in the current directory:
+At the end of execution, the script prints progress/status and generates:
 
 ```bash
 File                   ,  Description
 plesk-domains.csv      ,  List of domains that correctly point to the configured IPs.
 not-plesk-domains.csv  ,  List of domains that DO NOT point to the configured IPs or do not have DNS resolution.
+/opt/suporte/relatorios/plesk-relatorio-dominios.txt , Incremental execution report (appended on each run).
 ```
 
 ## ⚠️ Legal Notice
