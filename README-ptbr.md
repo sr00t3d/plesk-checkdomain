@@ -5,6 +5,8 @@ Readme: [English](README.md)
 ![License](https://img.shields.io/github/license/sr00t3d/plesk-checkdomain)
 ![Bash Script](https://img.shields.io/badge/bash-script-green)
 
+<img width="700" src="plesk-checkdomains-cover.webp" />
+
 Este script em Bash foi desenvolvido para auditar e verificar em massa se uma lista de domínios (extraída do Plesk ou fornecida manualmente) está apontando corretamente para os endereços IP de um servidor de destino.
 
 O script resolve o DNS de cada domínio externamente (usando Google DNS 8.8.8.8
