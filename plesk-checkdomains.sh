@@ -1,19 +1,18 @@
-#!/bin/bash
-################################################################################
-#                                                                              #
-#   PROJECT: Plesk DNS Auditor                                                 #
-#   VERSION: 9.1.0                                                             #
-#                                                                              #
-#   AUTHOR:  Percio Andrade                                                    #
-#   CONTACT: percio@evolya.com.br | contato@perciocastelo.com.br               #
-#   WEB:     https://perciocastelo.com.br                                      #
-#                                                                              #
-#   INFO:                                                                      #
-#   Check if domains point to Plesk Server IPs with progress bar & CSV export. #
-#                                                                              #
-################################################################################
+#!/usr/bin/env bash
+# ╔═══════════════════════════════════════════════════════════════════════════╗
+# ║                                                                           ║
+# ║   Plesk Check Domains v1.0.0                                              ║
+# ║                                                                           ║
+# ╠═══════════════════════════════════════════════════════════════════════════╣
+# ║   Autor:   Percio Castelo                                                 ║
+# ║   Contato: percio@evolya.com.br | contato@perciocastelo.com.br            ║
+# ║   Web:     https://perciocastelo.com.br                                   ║
+# ║                                                                           ║
+# ║   Função:  Check if the domains point to the IPs of the Plesk server.     ║
+# ║            Includes a progress bar and export to CSV.                     ║
+# ╚═══════════════════════════════════════════════════════════════════════════╝
 
-# --- Configurações de Relatório e Log ---
+# --- Report and Log Settings ---
 DIRECTORY_REPORTS="/opt/suporte/relatorios"
 FILE_REPORT="$DIRECTORY_REPORTS/plesk-relatorio-dominios.txt"
 DESTINY_MAIL="mail@domain.tld" # Replace with the recipient's actual email address.
