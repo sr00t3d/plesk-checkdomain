@@ -2,8 +2,7 @@
 
 Readme: [BR](README-ptbr.md)
 
-![License](https://img.shields.io/github/license/sr00t3d/plesk-checkdomain)
-![Bash Script](https://img.shields.io/badge/bash-script-green)
+![License](https://img.shields.io/github/license/sr00t3d/plesk-checkdomain) ![Bash Script](https://img.shields.io/badge/bash-script-green)
 
 <img width="700" src="plesk-checkdomains-cover.webp" />
 
@@ -14,7 +13,7 @@ The script resolves the DNS of each domain externally (using Google DNS
 generates CSV reports, appends an incremental TXT execution report, and sends
 an email summary.
 
-## 🚀 Features
+## Features
 
 - Automatic Extraction: If there is no prior list, the script automatically extracts all domains from the Plesk database (plesk db).
 - External DNS Verification: Uses dig pointing to Google DNS, ensuring that propagation is checked externally.
@@ -25,14 +24,14 @@ an email summary.
 - Incremental TXT report: Appends each run to a persistent report file.
 - Email summary: Sends only the current execution section by email.
 
-## 📋 Prerequisites
+## Prerequisites
 
 - Linux Operating System (compatible with Plesk servers).
 - Root access or permission to execute Plesk (plesk db) and dig commands.
 - bind-utils or dnsutils package installed (for the dig command).
 - `mail` command configured on the server (mailx / mailutils).
 
-## ⚙️ Configuration
+## Configuration
 
 Before running, update the variables at the beginning of the script:
 
@@ -46,22 +45,34 @@ PLESK_IPS=("SERVER_IP_1")
 You can add multiple IPs by separating them with spaces inside
 `PLESK_IPS=(...)`.
 
-## ▶️ How to Use
+## 🔧 Usage
 
-**1. Installation:**
+### Hosted mode
 
-Save the script on the server, for example, as plesk-checkdomains.sh.
+1. **Download the file to the server:**
 
-**2. Execution Permission:**
+```bash
+curl -O https://raw.githubusercontent.com/sr00t3d/plesk-checkdomain/refs/heads/main/plesk-checkdomains.sh
+```
+
+2. **Give execution permission:**
 
 ```bash
 chmod +x plesk-checkdomains.sh
 ```
 
-**3. Execution:**
+3. **Execute the script:**
 
 ```bash
 ./plesk-checkdomains.sh
+```
+
+### Direct mode
+
+Run:
+
+```bash
+bash <(curl -fsSL 'https://raw.githubusercontent.com/sr00t3d/plesk-checkdomain/refs/heads/main/plesk-checkdomains.sh')
 ```
 
 ## Domain List Behavior
@@ -72,7 +83,7 @@ chmod +x plesk-checkdomains.sh
   uses this static list. To force a fresh read from Plesk, remove
   `plesk-domains.txt` before running again.
 
-## 📂 Output (Outputs)
+## Output (Outputs)
 
 At the end of execution, the script prints progress/status and generates:
 
@@ -83,17 +94,17 @@ not-plesk-domains.csv  ,  List of domains that DO NOT point to the configured IP
 /opt/suporte/relatorios/plesk-relatorio-dominios.txt , Incremental execution report (appended on each run).
 ```
 
-## ⚠️ Legal Notice
+## Legal Notice
 
 > [!WARNING]
 > This software is provided "as is." Always ensure you have explicit permission before executing it. The author is not responsible for any misuse, legal consequences, or data impact caused by this tool.
 
-## 📚 Detailed Tutorial
+## Detailed Tutorial
 
 For a complete, step-by-step guide, check out my full article:
 
 👉 [**Check Domains Ponting to Plesk**](https://perciocastelo.com.br/blog/check-domains-pointing-to-plesk.html)
 
-## License 📄
+## License
 
 This project is licensed under the **GNU General Public License v3.0**. See the [LICENSE](LICENSE) file for more details.
