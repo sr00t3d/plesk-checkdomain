@@ -1,180 +1,370 @@
 #!/usr/bin/env bash
-# ╔═══════════════════════════════════════════════════════════════════════════╗
-# ║                                                                           ║
-# ║   Plesk Check Domains v1.0.0                                              ║
-# ║                                                                           ║
-# ╠═══════════════════════════════════════════════════════════════════════════╣
-# ║   Autor:   Percio Castelo                                                 ║
-# ║   Contato: percio@evolya.com.br | contato@perciocastelo.com.br            ║
-# ║   Web:     https://perciocastelo.com.br                                   ║
-# ║                                                                           ║
-# ║   Função:  Check if the domains point to the IPs of the Plesk server.     ║
-# ║            Includes a progress bar and export to CSV.                     ║
-# ╚═══════════════════════════════════════════════════════════════════════════╝
+# +============================================================================+
+# | plesk-checkdomains.sh                                                      |
+# | Plesk Domain Pointing Verifier v2.0.0                                      |
+# | Audits whether Plesk-hosted domains resolve to authorized server IPv4      |
+# | addresses via DNS (dig), with automatic IP/domain discovery, filtering,    |
+# | optional CSV/email export, dry-run, and table/JSON/CSV reporting.          |
+# |                                                                            |
+# | Author:  Percio Castelo                                                    |
+# | Contact: percio@evolya.com.br | contato@perciocastelo.com.br               |
+# | Web:     https://perciocastelo.com.br                                      |
+# | Repo:    https://github.com/sr00t3d/plesk-checkdomain                      |
+# |                                                                            |
+# | Copyright 2024-2026 Percio Castelo                                         |
+# | SPDX-License-Identifier: Apache-2.0                                        |
+# +============================================================================+
 
-# --- Report and Log Settings ---
-DIRECTORY_REPORTS="/opt/suporte/relatorios"
-FILE_REPORT="$DIRECTORY_REPORTS/plesk-relatorio-dominios.txt"
-DESTINY_MAIL="mail@domain.tld" # Replace with the recipient's actual email address.
-EXECUTION_DATE=$(date "+%d/%m/%Y %H:%M:%S")
+set -uo pipefail
 
-# Ensure that the reports directory exists.
-mkdir -p "$DIRECTORY_REPORTS"
+readonly VERSION="2.0.0"
+readonly SCRIPT_NAME="$(basename "$0")"
 
-# Ensures that only root can read the file.
-touch "$FILE_REPORT"
-chmod 600 "$FILE_REPORT"
+# ---- Defaults ---------------------------------------------------------------
+DOMAINS_FILE=""
+IPS_RAW=""
+DNS_SERVER="8.8.8.8"
+DNS_TIMEOUT=2
+FILTER="all"
+SAVE_PATH=""
+EXPORT_CSV_DIR=""
+EMAIL_TO=""
+DRY_RUN=0
+OUTPUT_FORMAT="table"
+QUIET=0
+NO_COLOR=0
 
-# Detect System Language (Get first 2 chars, e.g., 'pt' from 'pt_BR.UTF-8')
-SYSTEM_LANG="${LANG:0:2}"
+# ---- Color helpers ----------------------------------------------------------
+init_colors() {
+    if [[ "$NO_COLOR" -eq 1 || ! -t 1 ]]; then
+        C_RESET="" C_BOLD="" C_GREEN="" C_YELLOW="" C_RED="" C_CYAN=""
+    else
+        C_RESET=$'\033[0m'
+        C_BOLD=$'\033[1m'
+        C_GREEN=$'\033[32m'
+        C_YELLOW=$'\033[33m'
+        C_RED=$'\033[31m'
+        C_CYAN=$'\033[36m'
+    fi
+}
 
-if [[ "$SYSTEM_LANG" == "pt" ]]; then
-    # Mensagens em Português
-    MSG_GEN_LIST="Lista de domínios não encontrada, gerando..."
-    MSG_USE_LIST="Utilizando a lista de domínios em"
-    MSG_START="Iniciando verificação de domínios"
-    MSG_PROG="Progresso"
-    MSG_DONE="Verificação concluída!"
-    MSG_HEADER_OK="Domínios apontando para o Plesk"
-    MSG_HEADER_NOK="Domínios que NÃO apontam para o Plesk"
-    MSG_CSV="CSV gerado:"
-    MSG_DOMAINS="domínios"
-    MSG_NO_IP="SEM IP"
-    MSG_COL_DOMAIN="Domínio"
-    MSG_REPORT_EXEC="RELATÓRIO DE EXECUÇÃO:"
-    MSG_REPORT_SAVED="Relatório incremental salvo em:"
-    MSG_EMAIL_SENT="E-mail enviado para"
-else
-    # Default to English
-    MSG_GEN_LIST="Domain list not found, generating..."
-    MSG_USE_LIST="Using domain list at"
-    MSG_START="Starting domain verification"
-    MSG_PROG="Progress"
-    MSG_DONE="Verification completed!"
-    MSG_HEADER_OK="Domains pointing to Plesk"
-    MSG_HEADER_NOK="Domains NOT pointing to Plesk"
-    MSG_CSV="CSV generated:"
-    MSG_DOMAINS="domains"
-    MSG_NO_IP="NO IP"
-    MSG_COL_DOMAIN="Domain"
-    MSG_REPORT_EXEC="EXECUTION REPORT:"
-    MSG_REPORT_SAVED="Incremental report saved at:"
-    MSG_EMAIL_SENT="Email sent to"
+# ---- Help & Version ---------------------------------------------------------
+show_version() {
+    echo "Plesk Domain Pointing Verifier v${VERSION}"
+}
+
+show_help() {
+    cat <<EOF
+Plesk Domain Pointing Verifier v${VERSION}
+Checks whether domains resolve via DNS to the authorized Plesk server IPv4s.
+
+Usage: ${SCRIPT_NAME} [OPTIONS]
+
+Options:
+  -f, --domains-file FILE File with one domain per line (default: query 'plesk db')
+  -i, --ips IP1,IP2       Comma-separated authorized server IPv4s (default: auto-detect)
+  --dns-server IP         DNS resolver for dig queries (default: 8.8.8.8)
+  --timeout SEC           DNS query timeout in seconds (default: 2)
+  --filter MODE           Filter results: all (default), ok, mismatch
+  --save PATH             Save rendered report to file (chmod 600)
+  --export-csv DIR        Export split CSVs (plesk-domains.csv & not-plesk-domains.csv)
+  --email ADDRESS         Email report summary via mail/mailx (optional)
+  --dry-run               Load domains & authorized IPs without running DNS queries
+  -o, --output FORMAT     Output format: table (default), json, csv
+  -q, --quiet             Suppress standard output (errors still go to stderr)
+  --no-color              Disable ANSI colors
+  -V, --version           Show version and exit
+  -h, --help              Show this help and exit
+
+Examples:
+  ${SCRIPT_NAME} --dry-run
+  ${SCRIPT_NAME} -f domains.txt -i 191.252.117.212 --filter all
+  ${SCRIPT_NAME} -f domains.txt -i 191.252.117.212 --filter mismatch -o json
+  ${SCRIPT_NAME} --export-csv /root/reports --save /root/reports/audit.txt -o csv
+EOF
+}
+
+# ---- Argument Parser --------------------------------------------------------
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -f|--domains-file)
+            [[ $# -lt 2 ]] && { echo "ERROR: $1 requires a file path." >&2; exit 1; }
+            DOMAINS_FILE="$2"; shift 2 ;;
+        -i|--ips)
+            [[ $# -lt 2 ]] && { echo "ERROR: $1 requires a comma-separated IP list." >&2; exit 1; }
+            IPS_RAW="$2"; shift 2 ;;
+        --dns-server)
+            [[ $# -lt 2 ]] && { echo "ERROR: $1 requires a DNS server IP." >&2; exit 1; }
+            DNS_SERVER="$2"; shift 2 ;;
+        --timeout)
+            [[ $# -lt 2 ]] && { echo "ERROR: $1 requires a timeout in seconds." >&2; exit 1; }
+            DNS_TIMEOUT="$2"; shift 2 ;;
+        --filter)
+            [[ $# -lt 2 ]] && { echo "ERROR: $1 requires all, ok, or mismatch." >&2; exit 1; }
+            FILTER="$2"; shift 2 ;;
+        --save)
+            [[ $# -lt 2 ]] && { echo "ERROR: $1 requires a file path." >&2; exit 1; }
+            SAVE_PATH="$2"; shift 2 ;;
+        --export-csv)
+            [[ $# -lt 2 ]] && { echo "ERROR: $1 requires a directory path." >&2; exit 1; }
+            EXPORT_CSV_DIR="$2"; shift 2 ;;
+        --email)
+            [[ $# -lt 2 ]] && { echo "ERROR: $1 requires an email address." >&2; exit 1; }
+            EMAIL_TO="$2"; shift 2 ;;
+        --dry-run)
+            DRY_RUN=1; shift ;;
+        -o|--output)
+            [[ $# -lt 2 ]] && { echo "ERROR: $1 requires table, json, or csv." >&2; exit 1; }
+            OUTPUT_FORMAT="$2"; shift 2 ;;
+        -q|--quiet)
+            QUIET=1; shift ;;
+        --no-color)
+            NO_COLOR=1; shift ;;
+        -V|--version)
+            show_version; exit 0 ;;
+        -h|--help)
+            show_help; exit 0 ;;
+        *)
+            echo "ERROR: Unknown option: $1 (run with -h for usage)" >&2
+            exit 1 ;;
+    esac
+done
+
+init_colors
+
+# ---- Validations ------------------------------------------------------------
+case "$OUTPUT_FORMAT" in
+    table|json|csv) ;;
+    *)
+        echo "${C_RED}ERROR: Invalid output format '${OUTPUT_FORMAT}'. Expected table, json, or csv.${C_RESET}" >&2
+        exit 1 ;;
+esac
+
+case "$FILTER" in
+    all|ok|mismatch) ;;
+    *)
+        echo "${C_RED}ERROR: Invalid filter '${FILTER}'. Expected all, ok, or mismatch.${C_RESET}" >&2
+        exit 1 ;;
+esac
+
+if ! [[ "$DNS_TIMEOUT" =~ ^[0-9]+$ ]] || [[ "$DNS_TIMEOUT" -lt 1 ]]; then
+    echo "${C_RED}ERROR: --timeout must be a positive integer.${C_RESET}" >&2
+    exit 1
 fi
 
-# Generate domain file
-if [[ ! -f plesk-domains.txt ]]; then
-        echo "$MSG_GEN_LIST"
-        plesk db -N -e "SELECT name FROM domains;" > plesk-domains.txt
-else
-        echo "$MSG_USE_LIST $(pwd)/plesk-domains.txt"
+if [[ "$DRY_RUN" -eq 0 ]] && ! command -v dig >/dev/null 2>&1; then
+    echo "${C_RED}ERROR: 'dig' (bind-utils/dnsutils) is required for DNS resolution.${C_RESET}" >&2
+    exit 1
 fi
 
-# List of server IPs
-# Eg
-# PLESK_IPS=("192.168.1.100" "192.168.1.101") # Replace with the actual IP addresses of the Plesk server.
-PLESK_IPS=("SERVER_IP_1") 
+TIMESTAMP_ISO="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+HOSTNAME_LOCAL="$(hostname 2>/dev/null || echo unknown)"
 
-# File with the list of domains
-DOMAINS_FILE="${DOMAINS_FILE:-plesk-domains.txt}"
+# ---- Discover Authorized Server IPs -----------------------------------------
+declare -a PLESK_IPS=()
+if [[ -n "$IPS_RAW" ]]; then
+    IFS=',' read -ra PLESK_IPS <<< "$IPS_RAW"
+elif command -v plesk >/dev/null 2>&1; then
+    mapfile -t PLESK_IPS < <(plesk bin ipmanage --ip_list 2>/dev/null | grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}' | sort -u)
+fi
 
-# Arrays to store results
-declare -a OK
-declare -a NOK
+if [[ "${#PLESK_IPS[@]}" -eq 0 ]]; then
+    mapfile -t PLESK_IPS < <(hostname -I 2>/dev/null | tr ' ' '\n' | grep -E '^([0-9]{1,3}\.){3}[0-9]{1,3}$' | grep -v '^127\.' | sort -u)
+fi
 
-# Function to check if an IP is on the Plesk list
+if [[ "${#PLESK_IPS[@]}" -eq 0 ]]; then
+    echo "${C_RED}ERROR: Could not detect any server IPv4 address. Pass --ips IP1,IP2.${C_RESET}" >&2
+    exit 1
+fi
+
 is_plesk_ip() {
-    local ip=$1
-    for fip in "${PLESK_IPS[@]}"; do
-        [[ "$ip" == "$fip" ]] && return 0
+    local ip="$1"
+    for p in "${PLESK_IPS[@]}"; do
+        [[ "$ip" == "$p" ]] && return 0
     done
     return 1
 }
 
-# Total number of domains
-TOTAL=$(grep -cve '^\s*$' "$DOMAINS_FILE")
-COUNT=0
+# ---- Discover Domains -------------------------------------------------------
+declare -a DOMAINS=()
+DOMAIN_SOURCE=""
+if [[ -n "$DOMAINS_FILE" ]]; then
+    if [[ ! -f "$DOMAINS_FILE" ]]; then
+        echo "${C_RED}ERROR: Domains file not found: ${DOMAINS_FILE}${C_RESET}" >&2
+        exit 1
+    fi
+    DOMAIN_SOURCE="$DOMAINS_FILE"
+    mapfile -t DOMAINS < <(sed -E 's/#.*$//; s/^[[:space:]]+//; s/[[:space:]]+$//' "$DOMAINS_FILE" | grep -v '^$' | sort -u)
+elif command -v plesk >/dev/null 2>&1; then
+    DOMAIN_SOURCE="plesk-db"
+    mapfile -t DOMAINS < <(plesk db -N -e "SELECT name FROM domains;" 2>/dev/null | grep -v '^$' | sort -u)
+else
+    echo "${C_RED}ERROR: 'plesk' CLI not found. Provide a domain list with -f / --domains-file.${C_RESET}" >&2
+    exit 1
+fi
 
-echo "$MSG_START ($TOTAL $MSG_DOMAINS)..."
+if [[ "${#DOMAINS[@]}" -eq 0 ]]; then
+    echo "${C_RED}ERROR: No domains found from ${DOMAIN_SOURCE}.${C_RESET}" >&2
+    exit 2
+fi
 
-# Process each domain
-while read -r domain; do
-    [[ -z "$domain" ]] && continue
-    COUNT=$((COUNT + 1))
+# ---- Execute DNS Checks -----------------------------------------------------
+declare -a R_DOMAIN=()
+declare -a R_IPS=()
+declare -a R_STATUS=()
 
-    # Progress bar
-    PERC=$((COUNT * 100 / TOTAL))
-    printf "\r$MSG_PROG: [%-50s] %d%%" $(printf "%0.s=" $(seq 1 $((PERC/2)))) "$PERC"
+COUNT_OK=0
+COUNT_MISMATCH=0
+COUNT_NOIP=0
 
-    # Capture IPs from the domain with a short timeout
-    readarray -t ip_list < <(dig +time=2 +tries=1 A +short "$domain" @8.8.8.8 | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$')
-
-    if [[ ${#ip_list[@]} -eq 0 ]]; then
-        NOK+=("$domain | $MSG_NO_IP")
+for domain in "${DOMAINS[@]}"; do
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        R_DOMAIN+=("$domain")
+        R_IPS+=("-")
+        R_STATUS+=("WOULD_CHECK")
         continue
     fi
 
-    matched=false
-    for ip in "${ip_list[@]}"; do
+    mapfile -t resolved < <(
+        dig +time="$DNS_TIMEOUT" +tries=1 A +short "$domain" "@${DNS_SERVER}" 2>/dev/null \
+            | grep -E '^([0-9]{1,3}\.){3}[0-9]{1,3}$' || true
+    )
+
+    if [[ "${#resolved[@]}" -eq 0 ]]; then
+        COUNT_NOIP=$((COUNT_NOIP + 1))
+        [[ "$FILTER" == "ok" ]] && continue
+        R_DOMAIN+=("$domain")
+        R_IPS+=("NO_IP")
+        R_STATUS+=("NO_IP")
+        continue
+    fi
+
+    joined_ips="$(IFS=','; echo "${resolved[*]}")"
+    matched=0
+    for ip in "${resolved[@]}"; do
         if is_plesk_ip "$ip"; then
-            OK+=("$domain | $ip")
-            matched=true
+            matched=1
+            break
         fi
     done
 
-    if [[ $matched == false ]]; then
-        for ip in "${ip_list[@]}"; do
-            NOK+=("$domain | $ip")
-        done
+    if [[ "$matched" -eq 1 ]]; then
+        COUNT_OK=$((COUNT_OK + 1))
+        [[ "$FILTER" == "mismatch" ]] && continue
+        R_DOMAIN+=("$domain")
+        R_IPS+=("$joined_ips")
+        R_STATUS+=("MATCH")
+    else
+        COUNT_MISMATCH=$((COUNT_MISMATCH + 1))
+        [[ "$FILTER" == "ok" ]] && continue
+        R_DOMAIN+=("$domain")
+        R_IPS+=("$joined_ips")
+        R_STATUS+=("MISMATCH")
     fi
-done < "$DOMAINS_FILE"
-
-echo -e "\n\n$MSG_DONE\n"
-
-# --- START OF TXT REPORT GENERATION ---
-{
-    echo "=================================================="
-    echo "$MSG_REPORT_EXEC $EXECUTION_DATE"
-    echo "=================================================="
-    echo ""
-    echo "$MSG_HEADER_OK"
-    echo "------------------------------"
-    for item in "${OK[@]}"; do
-        echo "$item"
-    done
-    echo ""
-    echo "$MSG_HEADER_NOK"
-    echo "------------------------------"
-    for item in "${NOK[@]}"; do
-        echo "$item"
-    done
-    echo -e "\n\n"
-} >> "$FILE_REPORT"
-# --- END OF TXT REPORT GENERATION ---
-
-# Displays on the terminal (optional, maintained as original)
-echo "$MSG_REPORT_SAVED $FILE_REPORT"
-
-# Export CSV
-CSV_OK="plesk-domains.csv"
-CSV_NOK="not-plesk-domains.csv"
-
-echo "$MSG_COL_DOMAIN;IP" > "$CSV_OK"
-for item in "${OK[@]}"; do
-    echo "$item" | sed 's/ | /;/' >> "$CSV_OK"
 done
 
-echo "$MSG_COL_DOMAIN;IP" > "$CSV_NOK"
-for item in "${NOK[@]}"; do
-    echo "$item" | sed 's/ | /;/' >> "$CSV_NOK"
-done
+OVERALL_STATUS="SUCCESS"
+[[ "$DRY_RUN" -eq 1 ]] && OVERALL_STATUS="DRY_RUN"
+IPS_JOINED="$(IFS=','; echo "${PLESK_IPS[*]}")"
 
-# Email Sending
-# We only send a portion of the last execution so the email doesn't become too long over time.
-tail -n $(( ${#OK[@]} + ${#NOK[@]} + 10 )) "$FILE_REPORT" | mail -s "Plesk Domain Check - $EXECUTION_DATE" "$DESTINY_MAIL"
+json_escape() {
+    printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
+}
 
-echo "$MSG_EMAIL_SENT $DESTINY_MAIL"
-echo
-echo "$MSG_CSV"
-echo " - $CSV_OK"
-echo " - $CSV_NOK"
+# ---- Render Report ----------------------------------------------------------
+render_report() {
+    if [[ "$OUTPUT_FORMAT" == "json" ]]; then
+        printf '{\n'
+        printf '  "version": "%s",\n' "$VERSION"
+        printf '  "status": "%s",\n' "$OVERALL_STATUS"
+        printf '  "hostname": "%s",\n' "$(json_escape "$HOSTNAME_LOCAL")"
+        printf '  "domain_source": "%s",\n' "$(json_escape "$DOMAIN_SOURCE")"
+        printf '  "dns_server": "%s",\n' "$(json_escape "$DNS_SERVER")"
+        printf '  "authorized_ips": "%s",\n' "$(json_escape "$IPS_JOINED")"
+        printf '  "filter": "%s",\n' "$FILTER"
+        printf '  "total_checked": %d,\n' "${#DOMAINS[@]}"
+        printf '  "matched": %d,\n' "$COUNT_OK"
+        printf '  "mismatched": %d,\n' "$COUNT_MISMATCH"
+        printf '  "no_ip": %d,\n' "$COUNT_NOIP"
+        printf '  "dry_run": %s,\n' "$([[ "$DRY_RUN" -eq 1 ]] && echo true || echo false)"
+        printf '  "timestamp": "%s",\n' "$TIMESTAMP_ISO"
+        printf '  "results": [\n'
+        for i in "${!R_DOMAIN[@]}"; do
+            comma=","
+            [[ "$i" -eq $((${#R_DOMAIN[@]} - 1)) ]] && comma=""
+            printf '    {"domain": "%s", "resolved_ips": "%s", "status": "%s"}%s\n' \
+                "$(json_escape "${R_DOMAIN[$i]}")" \
+                "$(json_escape "${R_IPS[$i]}")" \
+                "${R_STATUS[$i]}" \
+                "$comma"
+        done
+        printf '  ]\n'
+        printf '}\n'
+
+    elif [[ "$OUTPUT_FORMAT" == "csv" ]]; then
+        echo "timestamp,dns_server,domain,resolved_ips,status"
+        for i in "${!R_DOMAIN[@]}"; do
+            printf '%s,"%s","%s","%s",%s\n' \
+                "$TIMESTAMP_ISO" "$DNS_SERVER" "${R_DOMAIN[$i]}" "${R_IPS[$i]}" "${R_STATUS[$i]}"
+        done
+
+    else
+        BORDER="+------------------------------+---------------------------+--------------+"
+        echo ""
+        echo "${C_BOLD}Plesk Domain Pointing Verifier v${VERSION}${C_RESET}"
+        echo "Host           : ${HOSTNAME_LOCAL}"
+        echo "Source         : ${DOMAIN_SOURCE} (${#DOMAINS[@]} domain(s))"
+        echo "DNS Resolver   : ${DNS_SERVER} (timeout: ${DNS_TIMEOUT}s)"
+        echo "Authorized IPs : ${IPS_JOINED}"
+        echo "Filter         : ${FILTER}"
+        echo "Dry-Run        : $([[ "$DRY_RUN" -eq 1 ]] && echo yes || echo no)"
+        echo "Status         : ${OVERALL_STATUS}"
+        echo "Timestamp      : ${TIMESTAMP_ISO}"
+        echo ""
+        echo "$BORDER"
+        printf "| %-28s | %-25s | %-12s |\n" "Domain" "Resolved IP(s)" "Status"
+        echo "$BORDER"
+        for i in "${!R_DOMAIN[@]}"; do
+            printf "| %-28s | %-25s | %-12s |\n" "${R_DOMAIN[$i]}" "${R_IPS[$i]}" "${R_STATUS[$i]}"
+        done
+        echo "$BORDER"
+        echo "Summary        : ${COUNT_OK} matched | ${COUNT_MISMATCH} mismatched | ${COUNT_NOIP} no-ip"
+        echo ""
+    fi
+}
+
+REPORT_OUT="$(render_report)"
+
+if [[ -n "$SAVE_PATH" && "$DRY_RUN" -eq 0 ]]; then
+    mkdir -p "$(dirname "$SAVE_PATH")"
+    printf '%s\n' "$REPORT_OUT" > "$SAVE_PATH"
+    chmod 600 "$SAVE_PATH"
+fi
+
+if [[ -n "$EXPORT_CSV_DIR" && "$DRY_RUN" -eq 0 ]]; then
+    mkdir -p "$EXPORT_CSV_DIR"
+    csv_ok="${EXPORT_CSV_DIR}/plesk-domains.csv"
+    csv_nok="${EXPORT_CSV_DIR}/not-plesk-domains.csv"
+    echo "domain;resolved_ips;status" > "$csv_ok"
+    echo "domain;resolved_ips;status" > "$csv_nok"
+    for i in "${!R_DOMAIN[@]}"; do
+        if [[ "${R_STATUS[$i]}" == "MATCH" ]]; then
+            printf '%s;%s;%s\n' "${R_DOMAIN[$i]}" "${R_IPS[$i]}" "${R_STATUS[$i]}" >> "$csv_ok"
+        else
+            printf '%s;%s;%s\n' "${R_DOMAIN[$i]}" "${R_IPS[$i]}" "${R_STATUS[$i]}" >> "$csv_nok"
+        fi
+    done
+    chmod 600 "$csv_ok" "$csv_nok"
+fi
+
+if [[ -n "$EMAIL_TO" && "$DRY_RUN" -eq 0 ]]; then
+    if command -v mail >/dev/null 2>&1; then
+        printf '%s\n' "$REPORT_OUT" | mail -s "Plesk Domain Check (${HOSTNAME_LOCAL}) - ${TIMESTAMP_ISO}" "$EMAIL_TO" || true
+    fi
+fi
+
+if [[ "$QUIET" -eq 0 ]]; then
+    printf '%s\n' "$REPORT_OUT"
+fi
+
+exit 0

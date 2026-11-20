@@ -1,110 +1,153 @@
-# Domain Name Verifier (Plesk)
+# Plesk Domain Pointing Verifier
 
-Readme: [BR](README-ptbr.md)
+Readme: [PT-BR](README-ptbr.md)
 
-![License](https://img.shields.io/github/license/sr00t3d/plesk-checkdomain) ![Bash Script](https://img.shields.io/badge/bash-script-green)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![Version](https://img.shields.io/badge/version-2.0.0-green.svg)](https://github.com/sr00t3d/plesk-checkdomain/releases)
+[![Shell](https://img.shields.io/badge/bash-4.0+-blue.svg)](https://www.gnu.org/software/bash/)
 
-<img width="700" src="plesk-checkdomains-cover.webp" />
+<img width="700" src="plesk-checkdomains-cover.webp" alt="Plesk Domain Pointing Verifier" />
 
-This Bash script was developed to audit and bulk-verify whether a list of domains (extracted from Plesk or manually provided) is correctly pointing to the IP addresses of a target server.
+**Plesk Domain Pointing Verifier v2.0.0** is a Bash CLI auditing tool for Plesk administrators that verifies whether hosted domains resolve via DNS (`dig`) to authorized server IPv4 addresses. It supports automatic Plesk DB domain extraction and server IP discovery, filtering (`all|ok|mismatch`), `chmod 600` report/CSV exports, optional email delivery, dry-run mode, and table/JSON/CSV outputs.
 
-The script resolves the DNS of each domain externally (using Google DNS
-8.8.8.8 to avoid local cache), compares it with a list of authorized IPs,
-generates CSV reports, appends an incremental TXT execution report, and sends
-an email summary.
+---
 
 ## Features
 
-- Automatic Extraction: If there is no prior list, the script automatically extracts all domains from the Plesk database (plesk db).
-- External DNS Verification: Uses dig pointing to Google DNS, ensuring that propagation is checked externally.
-- Visual Feedback: Includes a real-time progress bar to monitor the processing of large lists.
-- CSV Reports: Generates two separate files (semicolon-separated ;) to simplify importing into Excel:
-- Domains with correct pointing.
-- Domains with incorrect pointing or without IP.
-- Incremental TXT report: Appends each run to a persistent report file.
-- Email summary: Sends only the current execution section by email.
+- **Automatic Plesk Discovery**: queries `plesk db` for hosted domains and `plesk bin ipmanage --ip_list` (or `hostname -I`) for authorized IPs, or accepts custom `-f / --domains-file` and `-i / --ips` overrides
+- **Fast Configurable DNS Queries**: queries `A` records via `dig` against a configurable resolver (`--dns-server`, default `8.8.8.8`) and timeout (`--timeout`, default `2s`)
+- **Actionable Filtering (`--filter all|ok|mismatch`)**: isolate orphaned or migrated domains that no longer point to the server
+- **Protected Exports (`chmod 600`)**: optional `--save PATH` report file, `--export-csv DIR` split CSVs (`plesk-domains.csv` and `not-plesk-domains.csv`), and optional `--email ADDRESS` delivery
+- **Dry-Run Simulation (`--dry-run`)**: loads domains and authorized IPs without issuing DNS queries
+- **Multi-Format Reporting (`-o table|json|csv`)**: ASCII table, JSON for pipelines, or CSV for cleanup audits
 
-## Prerequisites
+---
 
-- Linux Operating System (compatible with Plesk servers).
-- Root access or permission to execute Plesk (plesk db) and dig commands.
-- bind-utils or dnsutils package installed (for the dig command).
-- `mail` command configured on the server (mailx / mailutils).
+## Requirements
 
-## Configuration
+- Linux server with Bash 4+
+- `dig` (`bind-utils` / `dnsutils`)
+- Optional: `plesk` CLI (when not passing `--domains-file` / `--ips`) and `mail` (only when using `--email`)
 
-Before running, update the variables at the beginning of the script:
+---
 
-```bash
-DIRECTORY_REPORTS="/opt/suporte/relatorios"
-FILE_REPORT="$DIRECTORY_REPORTS/plesk-relatorio-dominios.txt"
-DESTINY_MAIL="mail@domain.tld"
-PLESK_IPS=("SERVER_IP_1")
-```
-
-You can add multiple IPs by separating them with spaces inside
-`PLESK_IPS=(...)`.
-
-## 🔧 Usage
-
-### Hosted mode
-
-1. **Download the file to the server:**
+## Installation
 
 ```bash
-curl -O https://raw.githubusercontent.com/sr00t3d/plesk-checkdomain/refs/heads/main/plesk-checkdomains.sh
-```
-
-2. **Give execution permission:**
-
-```bash
+curl -fsSLO https://raw.githubusercontent.com/sr00t3d/plesk-checkdomain/main/plesk-checkdomains.sh
 chmod +x plesk-checkdomains.sh
 ```
 
-3. **Execute the script:**
+---
+
+## Usage
 
 ```bash
-./plesk-checkdomains.sh
+./plesk-checkdomains.sh [OPTIONS]
+
+Options:
+  -f, --domains-file FILE File with one domain per line (default: query 'plesk db')
+  -i, --ips IP1,IP2       Comma-separated authorized server IPv4s (default: auto-detect)
+  --dns-server IP         DNS resolver for dig queries (default: 8.8.8.8)
+  --timeout SEC           DNS query timeout in seconds (default: 2)
+  --filter MODE           Filter results: all (default), ok, mismatch
+  --save PATH             Save rendered report to file (chmod 600)
+  --export-csv DIR        Export split CSVs (plesk-domains.csv & not-plesk-domains.csv)
+  --email ADDRESS         Email report summary via mail/mailx (optional)
+  --dry-run               Load domains & authorized IPs without running DNS queries
+  -o, --output FORMAT     Output format: table (default), json, csv
+  -q, --quiet             Suppress standard output (errors still go to stderr)
+  --no-color              Disable ANSI colors
+  -V, --version           Show version and exit
+  -h, --help              Show this help and exit
 ```
 
-### Direct mode
-
-Run:
+### Examples
 
 ```bash
-bash <(curl -fsSL 'https://raw.githubusercontent.com/sr00t3d/plesk-checkdomain/refs/heads/main/plesk-checkdomains.sh')
+# Auto-detect Plesk domains & IPs in dry-run mode
+./plesk-checkdomains.sh --dry-run
+
+# Audit a custom domain list against an authorized IP and export split CSVs
+./plesk-checkdomains.sh -f domains.txt -i 172.64.80.1 --export-csv /root/reports
+
+# Show only mismatched / orphaned domains in JSON
+./plesk-checkdomains.sh --filter mismatch -o json
+
+# Cron-friendly audit saving a chmod 600 report and emailing ops
+./plesk-checkdomains.sh --save /root/reports/audit.txt --email ops@example.com -q
 ```
 
-## Domain List Behavior
+---
 
-- **First execution**: The script looks for `plesk-domains.txt`. If not found,
-  it runs the Plesk command to generate the base list.
-- **Subsequent executions**: If `plesk-domains.txt` already exists, the script
-  uses this static list. To force a fresh read from Plesk, remove
-  `plesk-domains.txt` before running again.
+## Real Output Example
 
-## Output (Outputs)
+Captured live on an AlmaLinux 8.10 server querying Google Public DNS (`8.8.8.8`):
 
-At the end of execution, the script prints progress/status and generates:
+### Table output (default)
 
-```bash
-File                   ,  Description
-plesk-domains.csv      ,  List of domains that correctly point to the configured IPs.
-not-plesk-domains.csv  ,  List of domains that DO NOT point to the configured IPs or do not have DNS resolution.
-/opt/suporte/relatorios/plesk-relatorio-dominios.txt , Incremental execution report (appended on each run).
+```text
+$ ./plesk-checkdomains.sh -f /tmp/plesk-e2e/domains.txt -i 172.64.80.1 --save /tmp/plesk-e2e/report.txt --export-csv /tmp/plesk-e2e/csv --no-color
+
+Plesk Domain Pointing Verifier v2.0.0
+Host           : plesk-srv01.example.com
+Source         : /tmp/plesk-e2e/domains.txt (3 domain(s))
+DNS Resolver   : 8.8.8.8 (timeout: 2s)
+Authorized IPs : 172.64.80.1
+Filter         : all
+Dry-Run        : no
+Status         : SUCCESS
+Timestamp      : 2026-11-20T07:13:35Z
+
++------------------------------+---------------------------+--------------+
+| Domain                       | Resolved IP(s)            | Status       |
++------------------------------+---------------------------+--------------+
+| example.com                  | 172.66.147.243,104.20.23.154 | MISMATCH     |
+| nonexistent-test.invalid     | NO_IP                     | NO_IP        |
+| perciocastelo.com.br         | 172.64.80.1               | MATCH        |
++------------------------------+---------------------------+--------------+
+Summary        : 1 matched | 1 mismatched | 1 no-ip
 ```
 
-## Legal Notice
+### JSON output (`-o json`)
 
-> [!WARNING]
-> This software is provided "as is." Always ensure you have explicit permission before executing it. The author is not responsible for any misuse, legal consequences, or data impact caused by this tool.
+```json
+{
+  "version": "2.0.0",
+  "status": "SUCCESS",
+  "hostname": "plesk-srv01.example.com",
+  "domain_source": "/tmp/plesk-e2e/domains.txt",
+  "dns_server": "8.8.8.8",
+  "authorized_ips": "172.64.80.1",
+  "filter": "all",
+  "total_checked": 3,
+  "matched": 1,
+  "mismatched": 1,
+  "no_ip": 1,
+  "dry_run": false,
+  "timestamp": "2026-11-20T07:13:35Z",
+  "results": [
+    {"domain": "example.com", "resolved_ips": "172.66.147.243,104.20.23.154", "status": "MISMATCH"},
+    {"domain": "nonexistent-test.invalid", "resolved_ips": "NO_IP", "status": "NO_IP"},
+    {"domain": "perciocastelo.com.br", "resolved_ips": "172.64.80.1", "status": "MATCH"}
+  ]
+}
+```
 
-## Detailed Tutorial
+### Filtered CSV output (`--filter mismatch -o csv`)
 
-For a complete, step-by-step guide, check out my full article:
+```csv
+timestamp,dns_server,domain,resolved_ips,status
+2026-11-20T07:13:35Z,"8.8.8.8","example.com","104.20.23.154,172.66.147.243",MISMATCH
+2026-11-20T07:13:35Z,"8.8.8.8","nonexistent-test.invalid","NO_IP",NO_IP
+```
 
-👉 [**Check Domains Ponting to Plesk**](https://perciocastelo.com.br/blog/check-domains-pointing-to-plesk.html)
+---
 
 ## License
 
-This project is licensed under the **GNU General Public License v3.0**. See the [LICENSE](LICENSE) file for more details.
+Apache-2.0. See [LICENSE](LICENSE) for details.
+
+## Author
+
+[Percio Castelo](https://perciocastelo.com.br)

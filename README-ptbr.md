@@ -1,108 +1,153 @@
-# Verificador de Apontamento de Domínios (Plesk)
+# Plesk Domain Pointing Verifier
 
 Readme: [EN](README.md)
 
-![License](https://img.shields.io/github/license/sr00t3d/plesk-checkdomain) ![Bash Script](https://img.shields.io/badge/bash-script-green)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![Version](https://img.shields.io/badge/version-2.0.0-green.svg)](https://github.com/sr00t3d/plesk-checkdomain/releases)
+[![Shell](https://img.shields.io/badge/bash-4.0+-blue.svg)](https://www.gnu.org/software/bash/)
 
-<img width="700" src="plesk-checkdomains-cover.webp" />
+<img width="700" src="plesk-checkdomains-cover.webp" alt="Plesk Domain Pointing Verifier" />
 
-Este script em Bash foi desenvolvido para auditar e verificar em massa se uma lista de domínios (extraída do Plesk ou fornecida manualmente) está apontando corretamente para os endereços IP de um servidor de destino.
+**Plesk Domain Pointing Verifier v2.0.0** e uma ferramenta CLI em Bash para administradores Plesk verificarem via DNS (`dig`) se os dominios hospedados apontam para os enderecos IPv4 autorizados do servidor. Suporta extracao automatica de dominios via `plesk db` e descoberta de IPs, filtros (`all|ok|mismatch`), exportacoes `chmod 600` em texto/CSV, envio opcional por e-mail, modo `--dry-run` e saidas em tabela, JSON ou CSV.
 
-O script resolve o DNS de cada domínio externamente (usando Google DNS 8.8.8.8
-para evitar cache local), compara com uma lista de IPs autorizados, gera
-relatórios CSV, adiciona relatório TXT incremental por execução e envia um
-resumo por e-mail.
+---
 
 ## Funcionalidades
 
-- Extração Automática: Se não houver uma lista prévia, o script extrai automaticamente todos os domínios do banco de dados do Plesk (plesk db).
-- Verificação DNS Externa: Utiliza o dig apontando para o DNS do Google, garantindo que a propagação seja verificada externamente.
-- Feedback Visual: Possui uma barra de progresso em tempo real para acompanhar o processamento de grandes listas.
-- Relatórios CSV: Gera dois arquivos separados (separados por ponto e vírgula ;) para facilitar a importação no Excel:
-- Domínios com apontamento correto.
-- Domínios com apontamento incorreto ou sem IP.
-- Relatório TXT incremental: Adiciona cada execução em um arquivo persistente.
-- Resumo por e-mail: Envia apenas o trecho da execução atual.
+- **Descoberta Automatica no Plesk**: consulta `plesk db` para listar dominios e `plesk bin ipmanage --ip_list` (ou `hostname -I`) para IPs autorizados, alem de aceitar `-f / --domains-file` e `-i / --ips`
+- **Consultas DNS Rapidas e Configuraveis**: consulta registros `A` via `dig` usando resolver (`--dns-server`, padrao `8.8.8.8`) e timeout (`--timeout`, padrao `2s`) configuraveis
+- **Filtros Objetivos (`--filter all|ok|mismatch`)**: isola rapidamente dominios orfaos ou migrados que nao apontam mais para o servidor
+- **Exportacoes Protegidas (`chmod 600`)**: `--save PATH` para salvar relatorio, `--export-csv DIR` para gerar CSVs separados (`plesk-domains.csv` e `not-plesk-domains.csv`) e `--email ENDERECO` opcional
+- **Simulacao Dry-Run (`--dry-run`)**: carrega dominios e IPs autorizados sem disparar consultas DNS
+- **Relatorios Multi-Formato (`-o table|json|csv`)**: tabela ASCII, JSON para automacoes ou CSV para auditorias de limpeza
 
-## Pré-requisitos
+---
 
-- Sistema Operacional Linux (compatível com servidores Plesk).
-- Acesso root ou permissão para executar comandos do Plesk (plesk db) e dig.
-- Pacote bind-utils ou dnsutils instalado (para o comando dig).
-- Comando `mail` configurado no servidor (mailx / mailutils).
+## Requisitos
 
-## Configuração
+- Servidor Linux com Bash 4+
+- `dig` (`bind-utils` / `dnsutils`)
+- Opcional: CLI `plesk` (quando nao usar `--domains-file` / `--ips`) e `mail` (apenas com `--email`)
 
-Antes de executar, ajuste as variáveis no início do script:
+---
 
-```bash
-DIRECTORY_REPORTS="/opt/suporte/relatorios"
-FILE_REPORT="$DIRECTORY_REPORTS/plesk-relatorio-dominios.txt"
-DESTINY_MAIL="mail@domain.tld"
-PLESK_IPS=("SERVER_IP_1")
-```
-
-Você pode adicionar múltiplos IPs separando por espaço em `PLESK_IPS=(...)`.
-
-## Como Usar
-
-### Modo hospedado
-
-1. **Baixe o arquivo para o servidor:**
+## Instalacao
 
 ```bash
-curl -O https://raw.githubusercontent.com/sr00t3d/plesk-checkdomain/refs/heads/main/plesk-checkdomains.sh
-```
-
-2. **Adicione permissão de execução:**
-
-```bash
+curl -fsSLO https://raw.githubusercontent.com/sr00t3d/plesk-checkdomain/main/plesk-checkdomains.sh
 chmod +x plesk-checkdomains.sh
 ```
 
-3. **Execute o script**
+---
+
+## Uso
 
 ```bash
-./plesk-checkdomains.sh
+./plesk-checkdomains.sh [OPCOES]
+
+Opcoes:
+  -f, --domains-file FILE Arquivo com um dominio por linha (padrao: consulta 'plesk db')
+  -i, --ips IP1,IP2       IPv4s autorizados separados por virgula (padrao: autodetect)
+  --dns-server IP         Resolver DNS para consultas dig (padrao: 8.8.8.8)
+  --timeout SEC           Timeout das consultas DNS em segundos (padrao: 2)
+  --filter MODE           Filtro de resultados: all (padrao), ok, mismatch
+  --save PATH             Salva relatorio em arquivo (chmod 600)
+  --export-csv DIR        Exporta CSVs separados (plesk-domains.csv e not-plesk-domains.csv)
+  --email ADDRESS         Envia relatorio por e-mail via mail/mailx (opcional)
+  --dry-run               Carrega dominios e IPs sem executar consultas DNS
+  -o, --output FORMATO    Formato de saida: table (padrao), json, csv
+  -q, --quiet             Suprime saida padrao (mantem erros em stderr)
+  --no-color              Desativa cores ANSI
+  -V, --version           Exibe a versao e encerra
+  -h, --help              Exibe a ajuda e encerra
 ```
 
-### Modo direto
+### Exemplos
 
-Execute:
 ```bash
-bash <(curl -fsSL 'https://raw.githubusercontent.com/sr00t3d/plesk-checkdomain/refs/heads/main/plesk-checkdomains.sh')
+# Autodetectar dominios e IPs do Plesk em modo dry-run
+./plesk-checkdomains.sh --dry-run
+
+# Auditar lista de dominios contra um IP autorizado e exportar CSVs separados
+./plesk-checkdomains.sh -f domains.txt -i 172.64.80.1 --export-csv /root/reports
+
+# Exibir apenas dominios divergentes ou orfaos em JSON
+./plesk-checkdomains.sh --filter mismatch -o json
+
+# Execucao em cron salvando relatorio chmod 600 e notificando por e-mail
+./plesk-checkdomains.sh --save /root/reports/audit.txt --email ops@exemplo.com.br -q
 ```
 
-## Comportamento da Lista de Domínios
+---
 
-- **Primeira execução**: O script procura por `plesk-domains.txt`. Se não
-  encontrar, executa o comando do Plesk para gerar a lista base.
-- **Execuções seguintes**: Se `plesk-domains.txt` já existir, o script usa essa
-  lista estática. Para forçar nova leitura do Plesk, remova
-  `plesk-domains.txt` antes de executar novamente.
+## Exemplo de Saida Real
 
-## Saída (Outputs)
+Capturado em servidor AlmaLinux 8.10 consultando Google Public DNS (`8.8.8.8`):
 
-Ao final da execução, o script exibe progresso/status e gera:
+### Saida em tabela (padrao)
 
-```bash
-Arquivo                ,  Descrição
-plesk-domains.csv      ,  Lista de domínios que apontam corretamente para os IPs configurados.
-not-plesk-domains.csv  ,  Lista de domínios que NÃO apontam para os IPs configurados ou não possuem resolução DNS.
-/opt/suporte/relatorios/plesk-relatorio-dominios.txt , Relatório incremental de execução (acumulado a cada rodada).
+```text
+$ ./plesk-checkdomains.sh -f /tmp/plesk-e2e/domains.txt -i 172.64.80.1 --save /tmp/plesk-e2e/report.txt --export-csv /tmp/plesk-e2e/csv --no-color
+
+Plesk Domain Pointing Verifier v2.0.0
+Host           : plesk-srv01.example.com
+Source         : /tmp/plesk-e2e/domains.txt (3 domain(s))
+DNS Resolver   : 8.8.8.8 (timeout: 2s)
+Authorized IPs : 172.64.80.1
+Filter         : all
+Dry-Run        : no
+Status         : SUCCESS
+Timestamp      : 2026-11-20T07:13:35Z
+
++------------------------------+---------------------------+--------------+
+| Domain                       | Resolved IP(s)            | Status       |
++------------------------------+---------------------------+--------------+
+| example.com                  | 172.66.147.243,104.20.23.154 | MISMATCH     |
+| nonexistent-test.invalid     | NO_IP                     | NO_IP        |
+| perciocastelo.com.br         | 172.64.80.1               | MATCH        |
++------------------------------+---------------------------+--------------+
+Summary        : 1 matched | 1 mismatched | 1 no-ip
 ```
 
-## Aviso Legal
+### Saida JSON (`-o json`)
 
-> [!WARNING]
-> Este software é fornecido "tal como está". Certifique-se sempre de ter permissão explícita antes de executar. O autor não se responsabiliza por qualquer uso indevido, consequências legais ou impacto nos dados causados ​​por esta ferramenta.
+```json
+{
+  "version": "2.0.0",
+  "status": "SUCCESS",
+  "hostname": "plesk-srv01.example.com",
+  "domain_source": "/tmp/plesk-e2e/domains.txt",
+  "dns_server": "8.8.8.8",
+  "authorized_ips": "172.64.80.1",
+  "filter": "all",
+  "total_checked": 3,
+  "matched": 1,
+  "mismatched": 1,
+  "no_ip": 1,
+  "dry_run": false,
+  "timestamp": "2026-11-20T07:13:35Z",
+  "results": [
+    {"domain": "example.com", "resolved_ips": "172.66.147.243,104.20.23.154", "status": "MISMATCH"},
+    {"domain": "nonexistent-test.invalid", "resolved_ips": "NO_IP", "status": "NO_IP"},
+    {"domain": "perciocastelo.com.br", "resolved_ips": "172.64.80.1", "status": "MATCH"}
+  ]
+}
+```
 
-## Detailed Tutorial
+### Saida CSV filtrada (`--filter mismatch -o csv`)
 
-Para um guia completo, passo a passo, confira meu artigo completo:
+```csv
+timestamp,dns_server,domain,resolved_ips,status
+2026-11-20T07:13:35Z,"8.8.8.8","example.com","104.20.23.154,172.66.147.243",MISMATCH
+2026-11-20T07:13:35Z,"8.8.8.8","nonexistent-test.invalid","NO_IP",NO_IP
+```
 
-👉 [**Verificar Domínios Apontando para o Plesk**](https://perciocastelo.com.br/blog/check-domains-pointing-to-plesk.html)
+---
 
-## Licença
+## Licenca
 
-Este projeto está licenciado sob a **GNU General Public License v3.0**. Veja o arquivo [LICENSE](LICENSE) para mais detalhes.
+Apache-2.0. Consulte [LICENSE](LICENSE) para detalhes.
+
+## Autor
+
+[Percio Castelo](https://perciocastelo.com.br)
